@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/googollee/go-socket.io"
+	"gopkg.in/mgo.v2"
 )
 
 type Message struct {
@@ -18,11 +20,26 @@ type UsernameChange struct {
 	New string `json:"newName"`
 }
 
+type Log struct {
+	Message        Message
+	UsernameChange UsernameChange
+	Timestamp      time.Time
+}
+
 func main() {
+	session, dbErr := mgo.Dial("localhost:7702")
+	if dbErr != nil {
+		log.Fatal(dbErr)
+	}
+	defer session.Close()
+
 	server, err := socketio.NewServer(nil)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	c := session.DB("chatapp").C("logs")
+	// c.DropCollection()
 
 	server.On("connection", func(so socketio.Socket) {
 		so.Join("chatroom")
@@ -36,27 +53,24 @@ func main() {
 		so.On("newMessage", func(msg string) {
 			var message Message
 			json.Unmarshal([]byte(msg), &message)
-			recordDb()
+			err = c.Insert(
+				Log{message,
+					UsernameChange{"", ""},
+					time.Now()},
+			)
 			so.BroadcastTo("chatroom", "newServerMessage", msg)
 		})
 
 		so.On("usernameChange", func(msg string) {
-			var userMessage UsernameChange
-			json.Unmarshal([]byte(msg), &userMessage)
+			var usernameChange UsernameChange
+			json.Unmarshal([]byte(msg), &usernameChange)
 			so.BroadcastTo("chatroom", "usernameChangeMessage", msg)
+			err = c.Insert(
+				Log{Message{"", ""},
+					usernameChange,
+					time.Now()},
+			)
 		})
-
-		// so.On("newMessage", func(msg string) {
-		// 	log.Println(msg)
-		// 	recordDb()
-		// 	log.Println("Broadcasting")
-		// 	so.BroadcastTo("chatroom", "newServerMessage", msg)
-		// })
-
-		// so.On("chat message", func(msg string) {
-		// 	log.Println("emit:", so.Emit("chat message", msg))
-		// 	so.BroadcastTo("chatroom", "chat message", msg)
-		// })
 
 		so.On("disconnection", func() {
 			log.Println("on disconnect")
