@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 
@@ -8,8 +9,13 @@ import (
 )
 
 type Message struct {
-	username string `json:"username"`
-	content  string `json:"content"`
+	Username string `json:"username"`
+	Content  string `json:"content"`
+}
+
+type UsernameChange struct {
+	Old string `json:"oldName"`
+	New string `json:"newName"`
 }
 
 func main() {
@@ -18,23 +24,34 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var welcomeMessage = " has joined"
-
 	server.On("connection", func(so socketio.Socket) {
 		so.Join("chatroom")
 
 		so.On("newUserJoined", func(username string) {
-			log.Println(username)
-			var serverMessage = username + welcomeMessage
+			// var welcomeMessage = " has joined"
+			var serverMessage = username + " has joined"
 			so.BroadcastTo("chatroom", "utilMessage", serverMessage)
 		})
 
 		so.On("newMessage", func(msg string) {
-			log.Println(msg)
+			var message Message
+			json.Unmarshal([]byte(msg), &message)
 			recordDb()
-			log.Println("Broadcasting")
 			so.BroadcastTo("chatroom", "newServerMessage", msg)
 		})
+
+		so.On("usernameChange", func(msg string) {
+			var userMessage UsernameChange
+			json.Unmarshal([]byte(msg), &userMessage)
+			so.BroadcastTo("chatroom", "usernameChangeMessage", msg)
+		})
+
+		// so.On("newMessage", func(msg string) {
+		// 	log.Println(msg)
+		// 	recordDb()
+		// 	log.Println("Broadcasting")
+		// 	so.BroadcastTo("chatroom", "newServerMessage", msg)
+		// })
 
 		// so.On("chat message", func(msg string) {
 		// 	log.Println("emit:", so.Emit("chat message", msg))
